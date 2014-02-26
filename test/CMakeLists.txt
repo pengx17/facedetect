@@ -1,4 +1,4 @@
-file(GLOB test_src "${CMAKE_CURRENT_SOURCE_DIR}/test.cpp")
+file(GLOB detect_src "${CMAKE_CURRENT_SOURCE_DIR}/detect.cpp")
 
-add_executable(facedetect_test ${test_src})
-target_link_libraries(facedetect_test facedetect)
+add_executable(detect ${detect_src})
+target_link_libraries(detect facedetect)
