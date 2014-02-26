@@ -1,15 +1,19 @@
 #ifndef __FACEDETECT_H__
 #define __FACEDETECT_H__
 
-#include "opencv2/core/core.hpp"
+#if (defined WIN32 || defined _WIN32 || defined WINCE) && defined BUILD_SHARED
+#  define FD_EXPORTS __declspec(dllexport)
+#else
+#  define FD_EXPORTS
+#endif
 
 namespace fd
 {
 enum ImageFormat
 {
-    GRAY,       //Signle channel gray image
+    GRAY,        //Signle channel gray image
     LUMA = GRAY,
-    BGR,        //Default 3-channel color order in OpenCV
+    BGR,         //Default 3-channel color order in OpenCV
     RGB,
     IYUV,        //YUV420 image
     I420 = IYUV,
@@ -17,26 +21,22 @@ enum ImageFormat
     YUV422 = UYVY,
 };
 
-// construct a Mat header for the input data pointer. its data validity is not checked.
-cv::Mat createMatWithPtr(int width, int height, int strip, void *ptr, ImageFormat format);
-
-class Facedetect
+struct FD_EXPORTS FDSize
 {
-public:
-    Facedetect();
-    ~Facedetect();
-    // Detect faces in the input
-    // return a bitmap of detected face rectangles
-    //
-    // note, the bitmap is not refering to Window bitmap image format
-    // it is a 8bit single channel image with the same image size with the input,
-    // the non-negative area indicates the found area.
-    cv::Mat detectBitmap(const cv::Mat& src, ImageFormat format = I420,
-        double scaleFactor = 1.1, int minNeighbors = 3,
-        cv::Size minSize = cv::Size(), cv::Size maxSize = cv::Size());
-private:
-    struct Impl;
-    std::auto_ptr<Impl> impl;
+    FDSize(int _w = 0, int _h = 0): w(_w), h(_h) {}
+    int w;
+    int h;
 };
+
+// Detect faces in the input
+// return a bitmap of detected face rectangles
+//
+// note, the bitmap is not refering to Window bitmap image format
+// it is a 8bit single channel image with the same image size with the input,
+// the non-negative area indicates the found area.
+// also, it MUST be pre-allocated with proper size
+FD_EXPORTS void detectBitmap(const void *src, const FDSize &imgSize, void *bitmap,
+                             ImageFormat format = I420, double scaleFactor = 1.1, int minNeighbors = 3,
+                             FDSize minSize = FDSize(), FDSize maxSize = FDSize());
 }
 #endif /* __FACEDETECT_H__ */

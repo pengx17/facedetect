@@ -30,7 +30,7 @@ static cv::Mat readI420Image(const std::string& filename)
     }
     std::auto_ptr<char> buf(new char [rows * cols * 3 / 2]);
     fin.read(buf.get(), rows * cols * 3 / 2);
-    cv::Mat src_i420_h = fd::createMatWithPtr(cols, rows, cols, buf.get(), fd::I420);
+    cv::Mat src_i420_h = cv::Mat(rows * 3 / 2, cols, CV_8UC1, buf.get());
     
     src_i420_h.copyTo(res);
     return res;
@@ -71,8 +71,10 @@ int main(int argc, char **argv)
         std::cout << "Error: cannot open input image!" << std::endl;
         return 0;
     }
-    fd::Facedetect detector;
-    cv::Mat bitmap = detector.detectBitmap(src, format);
+    int width = src_bgr.cols, height = src_bgr.rows;
+
+    cv::Mat bitmap(src_bgr.rows, src_bgr.cols, CV_8UC1);
+    fd::detectBitmap(src.ptr<void>(), fd::FDSize(width, height), bitmap.ptr<void>(), format);
     cv::imshow("src", src_bgr);
     cv::imshow("bitmap", bitmap);
     cv::Mat clip;
