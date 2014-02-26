@@ -2,7 +2,9 @@ facedetect
 ==========
 
 A static library wrapper for OpenCV. Detect faces in YUV images and output a bitmap for the found area.
-Run the `test` project as a demo.
+Run the `detect` project as a demo.
+
+Only a new cascade classifier (trained traincascade application) is supported.
 
 ####Features:
 
