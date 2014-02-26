@@ -1,5 +1,7 @@
+#include <numeric>
 #include "opencv2/opencv.hpp"
 #include "facedetect.h"
+#include "cascade.h"
 
 using namespace cv;
 
@@ -10,13 +12,13 @@ Mat createMatWithPtr(int width, int height, int strip, void *ptr, ImageFormat fo
     int cvformat = 0;
     switch(format)
     {
-    case YUV420:
+    case IYUV:
         height = height / 2 * 3;
         cvformat = CV_8UC1;
         break;
-    case YUV422:
+    case UYVY:
         width *= 2;
-        cvformat = CV_8UC1;
+        cvformat = CV_8UC1; // OpenCV seems to treat UYVY images as 8bit instead of 16bit
         break;
     case GRAY:
         cvformat = CV_8UC1;
@@ -38,16 +40,25 @@ struct Facedetect::Impl
     CascadeClassifier classifier;
 };
 
+string cascade_string = "";
+void initCascadeString()
+{
+    if(cascade_string.size() == 0)
+    {
+        const int num_sub = sizeof(cascade_strings) / sizeof(*cascade_strings);
+        cascade_string = std::accumulate(cascade_strings, cascade_strings + num_sub, cascade_string);
+    }
+}
+
 Facedetect::Impl::Impl()
 {
-    //init classifier
-    //hard coded for testing
-    String cascade_name = "haarcascade_frontalface_alt.xml";
-    if(!classifier.load(cascade_name))
+    initCascadeString();
+    FileStorage fs(cascade_string, FileStorage::READ | FileStorage::MEMORY | FileStorage::FORMAT_XML);
+    if(!classifier.read(fs.getFirstTopLevelNode()))
     {
         //this should never happen in real product, so dont worry about throw 
         //an exception in constructor
-        std::cout << "Cannot find cascade file" << std::endl;
+        std::cout << "Cannot load cascade file" << std::endl;
         throw std::exception();
     }
 }
@@ -71,11 +82,11 @@ Mat Facedetect::detectBitmap(const Mat& _src, ImageFormat format,
     Mat src;
     switch(format)
     {
-    case YUV420:
-        cvtColor(_src, src, CV_YUV420sp2BGR);
+    case IYUV:
+        cvtColor(_src, src, CV_YUV420p2BGR);
         cvtColor(src, src, COLOR_BGR2GRAY);
         break;
-    case YUV422:
+    case UYVY:
         cvtColor(_src, src, CV_YUV2BGR_UYVY);
         cvtColor(src, src, COLOR_BGR2GRAY);
         break;
