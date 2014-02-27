@@ -15,7 +15,7 @@ CascadeClassifier classifier;
 void initCascade();
 // construct a Mat header for the input data pointer. its data validity is not checked.
 Mat createMatWithPtr(int width, int height, int strip, const void *ptr, ImageFormat format);
-void detectBitmapHelper(const Mat& _src, Mat &bitmap, ImageFormat format,
+void detectBitmapHelper(const Mat& _src, std::vector<Rect>& faces, ImageFormat format,
                         double scaleFactor, int minNeighbors, Size minSize, Size maxSize);
 void initCascade()
 {
@@ -61,11 +61,10 @@ Mat createMatWithPtr(int width, int height, int strip, const void *ptr, ImageFor
     return Mat(height, width, cvformat, const_cast<void *>(ptr), strip);
 }
 
-void detectBitmapHelper(const Mat& _src, Mat &bitmap, ImageFormat format, 
+void detectBitmapHelper(const Mat& _src, std::vector<Rect>& faces, ImageFormat format, 
                         double scaleFactor, int minNeighbors, Size minSize, Size maxSize)
 {
     Mat src;
-    bitmap.setTo(0);
     switch(format)
     {
     case IYUV:
@@ -87,28 +86,56 @@ void detectBitmapHelper(const Mat& _src, Mat &bitmap, ImageFormat format,
     }
     equalizeHist(src, src);
 
-    std::vector<Rect> faces;
     classifier.detectMultiScale(src, faces,
         scaleFactor, minNeighbors, CV_HAAR_SCALE_IMAGE, minSize, maxSize);
 
-    //iteratively set the areas to 1's
-    for(std::vector<Rect>::iterator it = faces.begin(); it < faces.end(); ++it)
-    {
-        bitmap(*it).setTo(255);
-    }
 }
 } // namespace impl
 
-void detectBitmap(const void *_src, const FDSize &_imgSize, void *_bitmap,
-                  ImageFormat format, double scaleFactor, int minNeighbors,
+void detectBitmap(const void *_src, const FDSize &imgSize, void *_bitmap,
+                  bool output1bit, ImageFormat format, double scaleFactor, int minNeighbors,
                   FDSize _minSize, FDSize _maxSize)
 {
     impl::initCascade();
 
-    Mat src    = impl::createMatWithPtr(_imgSize.w, _imgSize.h, _imgSize.w, _src, format);
-    Mat bitmap = impl::createMatWithPtr(_imgSize.w, _imgSize.h, _imgSize.w, _bitmap, GRAY);
+    Mat src    = impl::createMatWithPtr(imgSize.w, imgSize.h, imgSize.w, _src, format);
+    std::vector<Rect> faces;
 
-    impl::detectBitmapHelper(src, bitmap, format, 
+    impl::detectBitmapHelper(src, faces, format, 
         scaleFactor, minNeighbors, Size(_minSize.w, _minSize.h),  Size(_maxSize.w, _maxSize.h));
+
+    const int bitmapWidth = output1bit ? (imgSize.w + 7) / 8 : imgSize.w;
+    Mat bitmap = impl::createMatWithPtr(bitmapWidth, imgSize.h, imgSize.w, _bitmap, GRAY);
+    bitmap.setTo(0);
+
+    if (!output1bit)
+    {
+        //iteratively set the areas to 255's
+        for(std::vector<Rect>::iterator it = faces.begin(); it < faces.end(); ++it)
+        {
+            bitmap(*it).setTo(255);
+        }
+    }
+    else
+    {
+        //TODO
+        //optimize me if needed
+        const int bits[] = {1, 2, 4, 8, 16, 32, 64, 128};
+        for(int y = 0; y < imgSize.h; ++y)
+        {
+            for(int x = 0; x < imgSize.w; ++x)
+            {
+                //low efficiency but should work...
+                for(std::vector<Rect>::iterator it = faces.begin(); it < faces.end(); ++it)
+                {
+                    if (it->contains(Point(y, x)))
+                    {
+                        bitmap.at<unsigned char>(y, x / 8) += bits[(7 - (x % 8))];
+                        break;
+                    }
+                }
+            }
+        }
+    }
 }
 } // namespace fd

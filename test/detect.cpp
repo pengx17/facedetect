@@ -74,7 +74,7 @@ int main(int argc, char **argv)
     int width = src_bgr.cols, height = src_bgr.rows;
 
     cv::Mat bitmap(src_bgr.rows, src_bgr.cols, CV_8UC1);
-    fd::detectBitmap(src.ptr<void>(), fd::FDSize(width, height), bitmap.ptr<void>(), format);
+    fd::detectBitmap(src.ptr<void>(), fd::FDSize(width, height), bitmap.ptr<void>(), false, format);
     cv::imshow("src", src_bgr);
     cv::imshow("bitmap", bitmap);
     cv::Mat clip;
