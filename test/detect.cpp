@@ -1,11 +1,19 @@
+#ifdef _MSC_VER
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include <fstream>
 #include "opencv2/opencv.hpp"
 #include "facedetect.h"
 
+
+// YUV420 videos can be downloaded at http://trace.eas.asu.edu/yuv/.
+// please rename video name to *.widthxheight.I420
 static void help()
 {
     std::cout << "Usage: ./detect img.I420" << std::endl;
     std::cout << "  support image formats defined in cv::imread and I420" << std::endl;
+    std::cout << "  support I420 YUV videos" << std::endl;
 }
 
 //I420 image is customized as:
@@ -46,33 +54,36 @@ static void writeI420Image(const cv::Mat &src, const std::string& filename)
     fout.close();
 }
 
-int main(int argc, char **argv)
+static bool constructMatFromString(const char *fpath, cv::Mat &img)
 {
-    if (argc != 2)
+    int height = 0, width = 0;
+    char fname_buf[255];
+    strcpy(fname_buf, fpath);
+    char *strptr = strtok(fname_buf, ".x");
+    strptr = strtok(NULL, ".x");
+    width  = atoi(strptr);
+    strptr = strtok(NULL, ".x");
+    height = atoi(strptr);
+    if (height == 0 || width == 0)
     {
-        help();
-        return 0;
+        return false;
     }
-    fd::ImageFormat format = strstr(argv[1], "I420") != 0 ? fd::I420 : fd::BGR;
-    cv::Mat src, src_bgr;
+    img.create(height * 3 / 2, width, CV_8UC1);
+    return true;
+}
+
+static void detectAndShow(const cv::Mat &src, fd::ImageFormat format, int wait = 0)
+{
+    cv::Mat src_bgr;
     if (format == fd::I420)
     {
-        cv::Mat src_i420 = readI420Image(argv[1]);
-        cv::cvtColor(src_i420, src_bgr, CV_YUV2BGR_I420);
-        src = src_i420;
+        cv::cvtColor(src, src_bgr, CV_YUV2BGR_I420);
     }
     else
     {
-        src = cv::imread(argv[1]);
         src_bgr = src;
     }
-    if(src.empty())
-    {
-        std::cout << "Error: cannot open input image!" << std::endl;
-        return 0;
-    }
     int width = src_bgr.cols, height = src_bgr.rows;
-
     cv::Mat bitmap(src_bgr.rows, src_bgr.cols, CV_8UC1);
     fd::detectBitmap(src.ptr<void>(), fd::FDSize(width, height), bitmap.ptr<void>(), false, format);
     cv::imshow("src", src_bgr);
@@ -81,6 +92,64 @@ int main(int argc, char **argv)
     cv::cvtColor(bitmap, bitmap, CV_GRAY2BGR);
     cv::bitwise_and(bitmap, src_bgr, clip);
     cv::imshow("clip", clip);
-    cv::waitKey();
+    cv::waitKey(wait);
+}
+
+// read a frame from input fstream
+// frame width and height is needed to be given in the img
+static bool readI420Video(std::fstream& fs, cv::Mat &img)
+{
+    if(!fs.good())
+    {
+        return false;
+    }
+    fs.read((char *)img.data, img.rows * img.cols);
+    return true;
+}
+
+int main(int argc, char **argv)
+{
+    if (argc != 2)
+    {
+        help();
+        return 0;
+    }
+    fd::ImageFormat format = strstr(argv[1], "I420") != 0 ? fd::I420 : fd::BGR;
+    bool isI420Video = strstr(argv[1], "I420.yuv") != 0;
+    cv::Mat src, src_bgr;
+    
+    if (isI420Video)
+    {
+        std::fstream fs(argv[1], std::fstream::in | std::fstream::binary);
+        if (!fs.good())
+        {
+            std::cout << "Error: cannot open input video!" << std::endl;
+        }
+        if (!constructMatFromString(argv[1], src))
+        {
+            std::cout << "Error: cannot get valid frame size from file name!" << std::endl;
+        }
+        while(readI420Video(fs, src))
+        {
+            detectAndShow(src, format, 30);
+        }
+    }
+    else
+    {
+        if (format == fd::I420)
+        {
+            src = readI420Image(argv[1]);
+        }
+        else
+        {
+            src = cv::imread(argv[1]);
+        }
+        if(src.empty())
+        {
+            std::cout << "Error: cannot open input image!" << std::endl;
+            return 0;
+        }
+        detectAndShow(src, format);
+    }
     return 0;
 }

@@ -88,7 +88,6 @@ void detectBitmapHelper(const Mat& _src, std::vector<Rect>& faces, ImageFormat f
 
     classifier.detectMultiScale(src, faces,
         scaleFactor, minNeighbors, CV_HAAR_SCALE_IMAGE, minSize, maxSize);
-
 }
 } // namespace impl
 
