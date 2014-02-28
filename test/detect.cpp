@@ -12,7 +12,7 @@ const int iterations = 100;
 // please rename video name to *.widthxheight.I420
 static void help()
 {
-    std::cout << "Usage: ./detect img.I420" << std::endl;
+    std::cout << "Usage: ./detect img.I420 [--opencl]" << std::endl;
     std::cout << "  support image formats defined in cv::imread and I420" << std::endl;
     std::cout << "  support I420 YUV and 420 y4m videos" << std::endl;
 }
@@ -105,7 +105,7 @@ static bool loadY4MHeader(std::fstream& fs, cv::Mat &img)
     return true;
 }
 
-static double detectAndShow(const cv::Mat &src, fd::ImageFormat format, int wait = 0)
+static double detectAndShow(const cv::Mat &src, fd::ImageFormat format, bool useOpenCL = false, int wait = 0)
 {
     cv::Mat src_bgr;
     if (format == fd::I420)
@@ -119,7 +119,7 @@ static double detectAndShow(const cv::Mat &src, fd::ImageFormat format, int wait
     int width = src_bgr.cols, height = src_bgr.rows;
     cv::Mat bitmap(src_bgr.rows, src_bgr.cols, CV_8UC1);
     double detect_time = (double)cv::getTickCount();
-    fd::detectBitmap(src.ptr<void>(), fd::FDSize(width, height), bitmap.ptr<void>(), false, format);
+    fd::detectBitmap(src.ptr<void>(), fd::FDSize(width, height), bitmap.ptr<void>(), false, format, useOpenCL);
     detect_time = (cv::getTickCount() - detect_time) / cv::getTickFrequency() * 1000.;
     cv::imshow("src", src_bgr);
     cv::imshow("bitmap", bitmap);
@@ -176,7 +176,7 @@ static bool readI420Video(std::fstream& fs, cv::Mat &img, bool isY4M = false)
 
 int main(int argc, char **argv)
 {
-    if (argc != 2)
+    if (argc < 2)
     {
         help();
         return 0;
@@ -184,6 +184,7 @@ int main(int argc, char **argv)
     fd::ImageFormat format = strstr(argv[1], "I420") != 0 ? fd::I420 : fd::BGR;
     bool isI420YUV = strstr(argv[1], "I420.yuv") != 0;
     bool isI420Y4M = strstr(argv[1], ".y4m") != 0;
+    bool useOpenCL = argc == 3 && strstr(argv[2], "--opencl") != 0;
     cv::Mat src, src_bgr;
     std::fstream fs;
     if (isI420YUV || isI420Y4M)
@@ -230,7 +231,7 @@ int main(int argc, char **argv)
     int wait_time = iterations > 0 ? 30 : 0;
     while(((isI420YUV || isI420Y4M) && readI420Video(fs, src, isI420Y4M)) || (frames < iterations))
     {
-        double detect_time = detectAndShow(src, format, wait_time);
+        double detect_time = detectAndShow(src, format, useOpenCL, wait_time);
         total_time += detect_time;
         std::cout << frames << ": " << detect_time << " ms" << std::endl; 
         frames ++;

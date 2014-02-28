@@ -39,7 +39,8 @@ struct FD_EXPORTS FDSize
 // the bitmap will be padded with 0's at the end of each row; otherwise, a pixel possesses one byte 
 // also, it MUST be pre-allocated with proper size
 FD_EXPORTS void detectBitmap(const void *src, const FDSize &imgSize, void *bitmap, bool output1bit = true,
-                             ImageFormat format = I420, double scaleFactor = 1.1, int minNeighbors = 3,
+                             ImageFormat format = I420, bool useOpenCL = false, 
+                             double scaleFactor = 1.1, int minNeighbors = 3,
                              FDSize minSize = FDSize(), FDSize maxSize = FDSize());
 }
 #endif /* __FACEDETECT_H__ */

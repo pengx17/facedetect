@@ -4,6 +4,11 @@
 #include "facedetect.h"
 #include "cascade.h"
 
+#include "opencv2/opencv_modules.hpp"
+#ifdef HAVE_OPENCV_OCL
+#include "opencv2/ocl/ocl.hpp"
+#endif
+
 using namespace cv;
 
 namespace fd
@@ -11,13 +16,14 @@ namespace fd
 namespace impl
 {
 class MyCascadeClassifier;
+class MyCascadeClassifierOCL;
 string cascade_string = "";
-MyCascadeClassifier classifier;
 
+void *loadOldCascade(cv::FileStorage& fs);
 void initCascade();
 // construct a Mat header for the input data pointer. its data validity is not checked.
 Mat createMatWithPtr(int width, int height, int strip, const void *ptr, ImageFormat format);
-void detectBitmapHelper(const Mat& _src, std::vector<Rect>& faces, ImageFormat format,
+void detectBitmapHelper(const Mat& _src, std::vector<Rect>& faces, ImageFormat format, bool useOpenCL,
                         double scaleFactor, int minNeighbors, Size minSize, Size maxSize);
 } // impl declarations
 
@@ -26,21 +32,25 @@ namespace impl
 class MyCascadeClassifier: public CascadeClassifier
 {
 public:
-    //overload load
-    bool load(const string& cascade);
-private:
-    //CvFileStorage's definition is hidden, but we need to know how to get the roots
-    struct CvFileStorageFix
-    {
-        int i_holder[4];
-        void* p_holder[4];
-        CvSeq* roots;
-        //we do not need the rest ...
-    };
-    void *loadOldCascade( cv::FileStorage& fs );
+    bool loadFromString(const string& cascade);
 };
 
-void *MyCascadeClassifier::loadOldCascade( cv::FileStorage& fs )
+class MyCascadeClassifierOCL: public ocl::OclCascadeClassifier
+{
+public:
+    bool loadFromString(const string& cascade);
+    inline void detectMultiScale(ocl::oclMat &image, CV_OUT std::vector<cv::Rect>& faces,
+                double scaleFactor = 1.1, int minNeighbors = 3, int flags = 0,
+                Size minSize = Size(), Size maxSize = Size())
+    {
+        OclCascadeClassifier::detectMultiScale(image, faces,
+                scaleFactor, minNeighbors, flags, minSize, maxSize);
+    }
+};
+MyCascadeClassifier    classifier;
+MyCascadeClassifierOCL classifier_ocl;
+
+void *loadOldCascade( cv::FileStorage& fs )
 {
     void* ptr = 0;
     CvFileNode* node = 0;
@@ -49,6 +59,14 @@ void *MyCascadeClassifier::loadOldCascade( cv::FileStorage& fs )
         return 0;
 
     int i, k;
+    //CvFileStorage's definition is hidden, but we need to know how to get the roots
+    struct CvFileStorageFix
+    {
+        int i_holder[4];
+        void* p_holder[4];
+        CvSeq* roots;
+        //we do not need the rest ...
+    };
     CvFileStorageFix *cvfs = (CvFileStorageFix *)fs.fs.obj;
     for( k = 0; k < cvfs->roots->total; k++ )
     {
@@ -88,7 +106,25 @@ stop_search:
     return ptr;
 }
 
-bool MyCascadeClassifier::load(const string& cascade)
+bool MyCascadeClassifier::loadFromString(const string& cascade)
+{
+    oldCascade.release();
+    data = Data();
+    featureEvaluator.release();
+
+    FileStorage fs(cascade, FileStorage::READ | FileStorage::MEMORY);
+    if( !fs.isOpened() )
+        return false;
+
+    if( read(fs.getFirstTopLevelNode()) )
+        return true;
+
+    oldCascade = Ptr<CvHaarClassifierCascade>((CvHaarClassifierCascade*)loadOldCascade(fs));
+    return !oldCascade.empty();
+}
+
+// has to do the same twice
+bool MyCascadeClassifierOCL::loadFromString(const string& cascade)
 {
     oldCascade.release();
     data = Data();
@@ -111,13 +147,22 @@ void initCascade()
     {
         const int num_sub = sizeof(cascade_strings) / sizeof(*cascade_strings);
         cascade_string = std::accumulate(cascade_strings, cascade_strings + num_sub, cascade_string);
-        if(!classifier.load(cascade_string))
+        if(!classifier.loadFromString(cascade_string))
         {
             //this should never happen in real product, so dont worry about throw 
             //an exception in constructor
             std::cout << "Cannot load cascade file" << std::endl;
             throw std::exception();
         }
+#ifdef HAVE_OPENCV_OCL
+        if(!classifier_ocl.loadFromString(cascade_string))
+        {
+            //this should never happen in real product, so dont worry about throw 
+            //an exception in constructor
+            std::cout << "Cannot load cascade file" << std::endl;
+            throw std::exception();
+        }
+#endif
     }
 }
 
@@ -147,7 +192,7 @@ Mat createMatWithPtr(int width, int height, int strip, const void *ptr, ImageFor
     return Mat(height, width, cvformat, const_cast<void *>(ptr), strip);
 }
 
-void detectBitmapHelper(const Mat& _src, std::vector<Rect>& faces, ImageFormat format, 
+void detectBitmapHelper(const Mat& _src, std::vector<Rect>& faces, ImageFormat format, bool useOpenCL, 
                         double scaleFactor, int minNeighbors, Size minSize, Size maxSize)
 {
     Mat src;
@@ -170,15 +215,23 @@ void detectBitmapHelper(const Mat& _src, std::vector<Rect>& faces, ImageFormat f
         cvtColor(_src, src, COLOR_BGR2GRAY);
         break;
     }
-    equalizeHist(src, src);
-
-    classifier.detectMultiScale(src, faces,
-        scaleFactor, minNeighbors, CV_HAAR_SCALE_IMAGE, minSize, maxSize);
+    //equalizeHist(src, src);
+    if (useOpenCL)
+    {
+        ocl::oclMat src_ocl(src);
+        classifier_ocl.detectMultiScale(src_ocl, faces,
+            scaleFactor, minNeighbors, CV_HAAR_SCALE_IMAGE, minSize, maxSize);
+    }
+    else
+    {
+        classifier.detectMultiScale(src, faces,
+            scaleFactor, minNeighbors, CV_HAAR_SCALE_IMAGE, minSize, maxSize);
+    }
 }
 } // namespace impl
 
 void detectBitmap(const void *_src, const FDSize &imgSize, void *_bitmap,
-                  bool output1bit, ImageFormat format, double scaleFactor, int minNeighbors,
+                  bool output1bit, ImageFormat format, bool useOpenCL, double scaleFactor, int minNeighbors,
                   FDSize _minSize, FDSize _maxSize)
 {
     impl::initCascade();
@@ -186,7 +239,7 @@ void detectBitmap(const void *_src, const FDSize &imgSize, void *_bitmap,
     Mat src = impl::createMatWithPtr(imgSize.w, imgSize.h, imgSize.w, _src, format);
     std::vector<Rect> faces;
 
-    impl::detectBitmapHelper(src, faces, format, 
+    impl::detectBitmapHelper(src, faces, format, useOpenCL, 
         scaleFactor, minNeighbors, Size(_minSize.w, _minSize.h),  Size(_maxSize.w, _maxSize.h));
 
     const int bitmapWidth = output1bit ? (imgSize.w + 7) / 8 : imgSize.w;
