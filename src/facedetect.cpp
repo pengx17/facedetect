@@ -1,4 +1,5 @@
 #include <numeric>
+#include <fstream>
 #include "opencv2/opencv.hpp"
 #include "facedetect.h"
 #include "cascade.h"
@@ -10,7 +11,43 @@ namespace fd
 namespace impl
 {
 string cascade_string = "";
-CascadeClassifier classifier;
+
+class MyCascadeClassifier: public CascadeClassifier
+{
+public:
+    //overload load
+    bool load(const string& cascade);
+};
+
+bool MyCascadeClassifier::load(const string& cascade)
+{
+    oldCascade.release();
+    data = Data();
+    featureEvaluator.release();
+
+    FileStorage fs(cascade, FileStorage::READ | FileStorage::MEMORY);
+    if( !fs.isOpened() )
+        return false;
+
+    if( read(fs.getFirstTopLevelNode()) )
+        return true;
+
+    fs.release();
+
+    // if this is not a new cascade, we output to a xml file as the workaround
+    std::fstream fout("cascade.xml", std::fstream::out);
+    if (!fout.is_open())
+    {
+        std::cout << "failed to output cascade file" << std::endl;
+        return false;
+    }
+    fout << cascade;
+    fout.close();
+    oldCascade = Ptr<CvHaarClassifierCascade>((CvHaarClassifierCascade*)cvLoad("cascade.xml", 0, 0, 0));
+    return !oldCascade.empty();
+}
+
+MyCascadeClassifier classifier;
 
 void initCascade();
 // construct a Mat header for the input data pointer. its data validity is not checked.
@@ -23,9 +60,7 @@ void initCascade()
     {
         const int num_sub = sizeof(cascade_strings) / sizeof(*cascade_strings);
         cascade_string = std::accumulate(cascade_strings, cascade_strings + num_sub, cascade_string);
-
-        FileStorage fs(cascade_string, FileStorage::READ | FileStorage::MEMORY | FileStorage::FORMAT_XML);
-        if(!classifier.read(fs.getFirstTopLevelNode()))
+        if(!classifier.load(cascade_string))
         {
             //this should never happen in real product, so dont worry about throw 
             //an exception in constructor
