@@ -10,23 +10,37 @@ namespace fd
 {
 namespace impl
 {
+class MyCascadeClassifier;
 string cascade_string = "";
+MyCascadeClassifier classifier;
 
+void initCascade();
+// construct a Mat header for the input data pointer. its data validity is not checked.
+Mat createMatWithPtr(int width, int height, int strip, const void *ptr, ImageFormat format);
+void detectBitmapHelper(const Mat& _src, std::vector<Rect>& faces, ImageFormat format,
+                        double scaleFactor, int minNeighbors, Size minSize, Size maxSize);
+} // impl declarations
+
+namespace impl
+{
 class MyCascadeClassifier: public CascadeClassifier
 {
 public:
     //overload load
     bool load(const string& cascade);
+private:
+    //CvFileStorage's definition is hidden, but we need to know how to get the roots
+    struct CvFileStorageFix
+    {
+        int i_holder[4];
+        void* p_holder[4];
+        CvSeq* roots;
+        //we do not need the rest ...
+    };
+    void *loadOldCascade( cv::FileStorage& fs );
 };
 
-struct CvFileStorageFix
-{
-    int i_holder[4];
-    void* p_holder[4];
-    CvSeq* roots;
-    //we do not need the rest ...
-};
-void *loadOldCascade( cv::FileStorage& fs )
+void *MyCascadeClassifier::loadOldCascade( cv::FileStorage& fs )
 {
     void* ptr = 0;
     CvFileNode* node = 0;
@@ -91,13 +105,6 @@ bool MyCascadeClassifier::load(const string& cascade)
     return !oldCascade.empty();
 }
 
-MyCascadeClassifier classifier;
-
-void initCascade();
-// construct a Mat header for the input data pointer. its data validity is not checked.
-Mat createMatWithPtr(int width, int height, int strip, const void *ptr, ImageFormat format);
-void detectBitmapHelper(const Mat& _src, std::vector<Rect>& faces, ImageFormat format,
-                        double scaleFactor, int minNeighbors, Size minSize, Size maxSize);
 void initCascade()
 {
     if(cascade_string.size() == 0)
@@ -176,7 +183,7 @@ void detectBitmap(const void *_src, const FDSize &imgSize, void *_bitmap,
 {
     impl::initCascade();
 
-    Mat src    = impl::createMatWithPtr(imgSize.w, imgSize.h, imgSize.w, _src, format);
+    Mat src = impl::createMatWithPtr(imgSize.w, imgSize.h, imgSize.w, _src, format);
     std::vector<Rect> faces;
 
     impl::detectBitmapHelper(src, faces, format, 
