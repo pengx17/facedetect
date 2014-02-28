@@ -19,6 +19,61 @@ public:
     bool load(const string& cascade);
 };
 
+struct CvFileStorageFix
+{
+    int i_holder[4];
+    void* p_holder[4];
+    CvSeq* roots;
+    //we do not need the rest ...
+};
+void *loadOldCascade( cv::FileStorage& fs )
+{
+    void* ptr = 0;
+    CvFileNode* node = 0;
+
+    if( !fs.isOpened() )
+        return 0;
+
+    int i, k;
+    CvFileStorageFix *cvfs = (CvFileStorageFix *)fs.fs.obj;
+    for( k = 0; k < cvfs->roots->total; k++ )
+    {
+        CvSeq* seq;
+        CvSeqReader reader;
+
+        node = (CvFileNode*)cvGetSeqElem( cvfs->roots, k );
+        if( !CV_NODE_IS_MAP( node->tag ))
+            return 0;
+        seq = node->data.seq;
+        node = 0;
+
+        cvStartReadSeq( seq, &reader, 0 );
+
+        // find the first element in the map
+        for( i = 0; i < seq->total; i++ )
+        {
+            if( CV_IS_SET_ELEM( reader.ptr ))
+            {
+                node = (CvFileNode*)reader.ptr;
+                goto stop_search;
+            }
+            CV_NEXT_SEQ_ELEM( seq->elem_size, reader );
+        }
+    }
+stop_search:
+
+    if( !node )
+        CV_Error( CV_StsObjectNotFound, "Could not find the/an object in file storage" );
+
+    ptr = cvRead( *fs, node, 0 );
+
+    if( cvGetErrStatus() < 0 )
+    {
+        cvRelease( (void**)&ptr );
+    }
+    return ptr;
+}
+
 bool MyCascadeClassifier::load(const string& cascade)
 {
     oldCascade.release();
@@ -32,18 +87,7 @@ bool MyCascadeClassifier::load(const string& cascade)
     if( read(fs.getFirstTopLevelNode()) )
         return true;
 
-    fs.release();
-
-    // if this is not a new cascade, we output to a xml file as the workaround
-    std::fstream fout("cascade.xml", std::fstream::out);
-    if (!fout.is_open())
-    {
-        std::cout << "failed to output cascade file" << std::endl;
-        return false;
-    }
-    fout << cascade;
-    fout.close();
-    oldCascade = Ptr<CvHaarClassifierCascade>((CvHaarClassifierCascade*)cvLoad("cascade.xml", 0, 0, 0));
+    oldCascade = Ptr<CvHaarClassifierCascade>((CvHaarClassifierCascade*)loadOldCascade(fs));
     return !oldCascade.empty();
 }
 
